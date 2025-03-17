@@ -1,46 +1,69 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import re
-import pandas as pd
+import time
 
-# Caminho do arquivo exportado do WhatsApp
-arquivo_whatsapp = "teste2.txt"
+# Configuração do Selenium
+chrome_options = Options()
+chrome_options.add_argument("--user-data-dir=C:\\Users\\Gabriel Souza\\AppData\\Local\\Google\\Chrome\\User Data")  # Caminho do perfil
+servico = Service("C:/Users/Gabriel Souza/Desktop/Pyth.Vs/chromedriver.exe")  # Caminho do chromedriver
 
-# Lista para armazenar os comprovantes extraídos
-comprovantes = []
+# Iniciar o navegador
+navegador = webdriver.Chrome(service=servico, options=chrome_options)
+navegador.get("https://web.whatsapp.com/")
 
-# Expressões regulares para identificar os dados
-padrao_valor = r"Valor: R\$ ([\d,.]+)"
-padrao_destinatario = r"Destinatário: (.+)"
-padrao_categoria = r"Categoria: (.+)"
+# Aguardar o usuário escanear o QR Code
+input("📲 Escaneie o QR Code e pressione Enter para continuar...")
 
-# Abrir e ler o arquivo de conversa
-with open(arquivo_whatsapp, "r", encoding="utf-8") as arquivo:
-    linhas = arquivo.readlines()
+# 📌 Função para extrair valor de comprovantes Pix
+def extrair_pix(mensagem):
+    padrao_valor = r"R\$\s?\d{1,3}(?:\.\d{3})*,\d{2}"  # Exemplo: R$ 150,00 ou R$ 1.250,75
+    padrao_pix = r"(Pix recebido|Transferência via Pix|Pagamento Pix|Comprovante Pix)"
 
-# Variáveis temporárias para armazenar os dados de cada comprovante
-valor, destinatario, categoria = None, None, None
+    if re.search(padrao_pix, mensagem, re.IGNORECASE) and re.search(padrao_valor, mensagem):
+        valor = re.search(padrao_valor, mensagem).group()
+        return valor
+    return None
 
-for linha in linhas:
-    if "Transferência realizada via Pix" in linha:
-        valor, destinatario, categoria = None, None, None  # Resetar os dados
-        
-    elif re.search(padrao_valor, linha):
-        valor = re.search(padrao_valor, linha).group(1)
-        
-    elif re.search(padrao_destinatario, linha):
-        destinatario = re.search(padrao_destinatario, linha).group(1)
-        
-    elif re.search(padrao_categoria, linha):
-        categoria = re.search(padrao_categoria, linha).group(1)
+# Esperar até que as mensagens carreguem
+try:
+    WebDriverWait(navegador, 30).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'copyable-text')]"))
+    )
+    print("📥 Mensagens carregadas!")
+except Exception as e:
+    print(f"❌ Erro ao carregar as mensagens: {e}")
 
-    # Quando todas as informações forem encontradas, adicionamos à lista
-    if valor and destinatario and categoria:
-        comprovantes.append({"Valor": valor, "Destinatário": destinatario, "Categoria": categoria})
-        valor, destinatario, categoria = None, None, None  # Resetar para o próximo comprovante
+# 📌 Armazena mensagens já processadas
+mensagens_processadas = set()
 
-# Criar um DataFrame para visualizar melhor
-df = pd.DataFrame(comprovantes)
+# Loop para capturar mensagens em tempo real
+while True:
+    try:
+        # Captura as mensagens mais recentes
+        mensagens = navegador.find_elements(By.XPATH, "//div[contains(@class, 'copyable-text')]")
 
-# Salvar os dados em um CSV
-df.to_csv("teste2.csv", index=False)
+        for msg in mensagens:
+            texto_msg = msg.text.strip()  # Remove espaços extras
 
-print("Extração concluída! Os dados foram salvos em 'teste2.csv'.")
+            if texto_msg not in mensagens_processadas:  # Verifica se já foi processada
+                valor_extraido = extrair_pix(texto_msg)  
+
+                if valor_extraido:
+                    print(f"✅ Comprovante Pix detectado! Valor: {valor_extraido}")
+                    print(f"📝 Mensagem completa: {texto_msg}\n")
+                    mensagens_processadas.add(texto_msg)  # Adiciona ao conjunto para não repetir
+
+        time.sleep(5)  # Aguarda 5 segundos antes de verificar novas mensagens
+
+    except KeyboardInterrupt:
+        print("🛑 Saindo do script...")
+        navegador.quit()  # Fecha o navegador corretamente
+        break  # Sai do loop
+
+
+
