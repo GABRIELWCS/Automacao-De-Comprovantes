@@ -6,11 +6,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import re
 import time
+import json
+
+
+# Ler configurações do arquivo JSON
+with open('config.json') as config_file:
+    config = json.load(config_file)
+
+chromedriver_path = config['chromedriver_path']
+chrome_profile_path = config['chrome_profile_path']
 
 # Configuração do Selenium
 chrome_options = Options()
-chrome_options.add_argument("--user-data-dir=C:\\Users\\Gabriel Souza\\AppData\\Local\\Google\\Chrome\\User Data")  # Caminho do perfil
-servico = Service("C:/Users/Gabriel Souza/Desktop/Pyth.Vs/chromedriver.exe")  # Caminho do chromedriver
+chrome_options.add_argument("--user-data-dir={chrome_profile_path}")  # Caminho do perfil
+servico = Service(chromedriver_path)  # Caminho do chromedriver
 
 # Iniciar o navegador
 navegador = webdriver.Chrome(service=servico, options=chrome_options)
@@ -64,6 +73,3 @@ while True:
         print("🛑 Saindo do script...")
         navegador.quit()  # Fecha o navegador corretamente
         break  # Sai do loop
-
-
-
