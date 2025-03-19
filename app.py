@@ -9,6 +9,21 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
+#Codigo para limpar pasta de registro
+def limpar_pasta(pasta):
+    if os.path.exists(pasta):
+        for arquivo in os.listdir(pasta):
+            caminho_arquivo = os.path.join(pasta, arquivo)
+            try:
+                if os.path.isfile(caminho_arquivo):
+                    os.remove(caminho_arquivo)  # Remove arquivos
+            except Exception as e:
+                print(f"⚠️ Erro ao remover {arquivo}: {e}")
+
+# Exemplo de uso antes de salvar novos arquivos
+limpar_pasta("Comprovantes")
+print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
+
 
 # Configuração do Selenium
 chrome_options = Options()
@@ -32,9 +47,10 @@ input("📲 Escaneie o QR Code e pressione Enter para continuar...")
 pasta_base = "Comprovantes"
 os.makedirs(pasta_base, exist_ok=True)
 
-# Arquivos CSV dentro da pasta "Comprovantes"
+#Caminho dos arquivos
 csv_funcionario = os.path.join(pasta_base, "comprovantes_funcionario.csv")
 csv_motoboy = os.path.join(pasta_base, "comprovantes_motoboy.csv")
+
 
 # Criar arquivos CSV se não existirem
 for arquivo in [csv_funcionario, csv_motoboy]:
@@ -121,6 +137,9 @@ def extrair_mensagens():
 while True:
     mensagens = extrair_mensagens()
     
+    if not mensagens:
+        print("⏳ Nenhuma nova mensagem encontrada. Aguardando...")
+    
     for nome, horario, categoria, mensagem in mensagens:
         if categoria == "Funcionário":
             arquivo = csv_funcionario
@@ -129,14 +148,19 @@ while True:
         else:
             continue  # Ignora categorias irrelevantes
         
+        print(f"💾 Salvando no arquivo: {arquivo}")  # Depuração
+
         # Salvar no arquivo CSV correspondente
-        with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([nome, horario, "", mensagem])  # Agora inclui o horário da mensagem
+        try:
+            with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow([nome, horario, "", mensagem])  # Agora inclui o horário da mensagem
+            print(f"✅ Mensagem salva: {mensagem}")
+        except Exception as e:
+            print(f"⚠️ Erro ao salvar no CSV: {e}")
     
-    print("⏳ Aguardando novas mensagens...")
-    time.sleep(45)  # Espera 45 segundos antes de verificar novamente
+    time.sleep(15)  # Espera 15 segundos antes de verificar novamente
 
 
 
-######ATUALIZADO 19/03/2025 13:56#####
+######ATUALIZADO 19/03/2025 20:48 
