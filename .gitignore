@@ -2,5 +2,4 @@ config.json
 venv
 {chrome_profile_path}
 app1.py
-testeOCR.py
 dependences.txt
