@@ -1,0 +1,1 @@
+# Esta pasta é apenas para guardar conteúdo, enquanto o programa estiver sendo executado.
