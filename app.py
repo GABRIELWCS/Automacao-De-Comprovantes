@@ -7,7 +7,8 @@ from selenium.webdriver.support import expected_conditions as EC
 import re
 import time
 import json
-
+import cv2
+import pytesseract as ts
 
 # Ler configurações do arquivo JSON
 with open('config.json') as config_file:
