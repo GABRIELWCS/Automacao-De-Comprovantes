@@ -1,238 +1,137 @@
-import csv
-import time
-import os
-import json
-import requests
-import cv2
-import pytesseract as ts
-import re
-import openpyxl
-import threading
-import sys
-import select
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from datetime import datetime, timedelta
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import csv
+import time
+import os
 
-# Variável global para rastrear a última mensagem processada
-ultima_mensagem_processada = None
 
-# ----- CONFIGURAÇÃO INICIAL -----
-def carregar_configuracoes():
-    """Carrega as configurações do arquivo JSON."""
-    with open('config.json') as config_file:
-        return json.load(config_file)
-
-# Substituindo o caminho do chromedriver diretamente no código
-chromedriver_path = "C:/Users/Gabriel Souza/Desktop/clonegit/Sistema-Hamburgueria-/chromedriver.exe"  # Caminho do chromedriver
-chrome_profile_path = "C:/Users/Gabriel Souza/AppData/Local/Google/Chrome/User Data"  # Caminho do perfil do Chrome
-base_folder_path = "C:/Users/Gabriel Souza/Desktop/clonegit/Sistema-Hamburgueria-"  # Caminho base da pasta
-dowloands_folder_path = "C:/Users/Gabriel Souza/Downloads"  # Caminho da pasta de downloads
-tesseract_path = "C:/Program Files/Tesseract-OCR/tesseract.exe"  # Caminho do Tesseract
-
-# Configurar o Tesseract
-ts.pytesseract.tesseract_cmd = tesseract_path
-
+# Código para limpar a pasta de registro
 def limpar_pasta(pasta):
-    """Remove todos os arquivos da pasta especificada."""
     if os.path.exists(pasta):
         for arquivo in os.listdir(pasta):
             caminho_arquivo = os.path.join(pasta, arquivo)
             try:
                 if os.path.isfile(caminho_arquivo):
-                    os.remove(caminho_arquivo)
+                    os.remove(caminho_arquivo)  # Remove arquivos
             except Exception as e:
                 print(f"⚠️ Erro ao remover {arquivo}: {e}")
 
-# Limpar a pasta "Comprovantes" antes de iniciar
+# Exemplo de uso antes de salvar novos arquivos
 limpar_pasta("Comprovantes")
 print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
 
-# Configuração do Selenium
-def configurar_selenium():
-    """Configura e inicia o navegador Selenium."""
-    chrome_options = Options()
-    chrome_options.add_argument(f"--user-data-dir={chrome_profile_path}")  # Usa o perfil do Chrome
-    # Remover o modo headless para garantir que a interface gráfica apareça
-    # chrome_options.add_argument("--headless")  # Modo headless (sem interface gráfica)
-    servico = Service(chromedriver_path)
-    navegador = webdriver.Chrome(service=servico, options=chrome_options)
-    navegador.get("https://web.whatsapp.com/")  # abre o wpp web
-    return navegador
+# Configuração do Selenium com o WebDriver Manager
+chrome_options = Options()
+chrome_options.add_argument("--user-data-dir=C:\\Users\\Gabriel Souza\\AppData\\Local\\Google\\Chrome\\User Data")  # Caminho do perfil do Chrome
+service = Service(ChromeDriverManager().install())  # Usando o WebDriver Manager
 
-# Esperar o carregamento do QR Code e verificar se o WhatsApp Web está carregado
-def esperar_carregamento_entrada():
-    """Esperar até o QR Code ser escaneado ou o WhatsApp Web carregar completamente."""
-    while True:
-        try:
-            # Esperar até o QR Code ser escaneado (essa div aparece enquanto o QR Code é mostrado)
-            WebDriverWait(navegador, 60).until(
-                EC.presence_of_element_located((By.XPATH, '//div[@title="Pesquisar ou iniciar nova conversa"]'))
-            )
-            print("✅ WhatsApp Web carregado com sucesso! Pronto para começar.")
-            break  # O WhatsApp Web carregou completamente
-        except Exception as e:
-            print(f"🟠 Aguardando o QR Code ser escaneado... Erro: {e}")
-            time.sleep(5)  # Aguardar um pouco e tentar novamente
+# Iniciar o navegador
+navegador = webdriver.Chrome(service=service, options=chrome_options)
+navegador.get("https://web.whatsapp.com/")
 
-navegador = configurar_selenium()
-esperar_carregamento_entrada()
+# Aguardar o usuário escanear o QR Code
+input("📲 Escaneie o QR Code e pressione Enter para continuar...")
 
-# Diretórios e arquivos de saída
-os.makedirs(base_folder_path, exist_ok=True)
+# Criar diretório para armazenar os arquivos
+pasta_base = "Comprovantes"
+os.makedirs(pasta_base, exist_ok=True)
 
-csv_funcionario = os.path.join(base_folder_path, "comprovantes_funcionario.csv")
-csv_motoboy = os.path.join(base_folder_path, "comprovantes_motoboy.csv")
+# Caminho dos arquivos
+csv_funcionario = os.path.join(pasta_base, "comprovantes_funcionario.csv")
+csv_motoboy = os.path.join(pasta_base, "comprovantes_motoboy.csv")
 
-def criar_arquivos_csv():
-    """Cria arquivos CSV com cabeçalho, se não existirem."""
-    for arquivo in [csv_funcionario, csv_motoboy]:
-        if not os.path.exists(arquivo):
-            with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Nome", "Horário", "Valor", "Destinatário", "Categoria"])
+# Criar arquivos CSV se não existirem
+for arquivo in [csv_funcionario, csv_motoboy]:
+    if not os.path.exists(arquivo):  # Evita sobrescrever dados existentes
+        with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Nome", "Horário", "Valor", "Mensagem Completa"])
 
-criar_arquivos_csv()
-
-# Conjunto para mensagens processadas (para evitar duplicatas)
+# Criar um conjunto para armazenar mensagens já processadas
 mensagens_processadas = set()
 
-# ----- FUNÇÕES AUXILIARES -----
+# Função para classificar mensagens por categoria
 def classificar_categoria(mensagem):
-    """Retorna a categoria se a mensagem começar com '📍 transferência', senão None."""
-    if mensagem.startswith("📍 transferência"):
-        mensagem_lower = mensagem.lower()
-        if "motoboy" in mensagem_lower:
-            return "Motoboy"
-        elif "funcionário" in mensagem_lower:
-            return "Funcionário"
-        else:
-            return "Outros"
-    return None
+    if "motoboy" in mensagem.lower():
+        return "Motoboy"
+    elif "funcionário" in mensagem.lower():
+        return "Funcionário"
+    else:
+        return "Outros"
 
-def gerar_nome_arquivo(nome, horario):
-    """Gera um nome de arquivo simples removendo caracteres especiais."""
-    nome_limpo = re.sub(r'[^\w]', '', nome)[:12]  # Limita para 12 caracteres
-    horario_limpo = re.sub(r'[^\d]', '', horario)
-    return f"{nome_limpo}_{horario_limpo}.jpg".strip()
-
+# Função para extrair mensagens com nome e horário do remetente
 def extrair_mensagens():
-    """Extrai mensagens e imagens do WhatsApp que estejam começando com '📍 transferência' 
-       e que foram enviadas após o início da execução."""
-    global ultima_mensagem_processada
     mensagens_extraidas = []
-    
-    if ultima_mensagem_processada is None:
-        ultima_mensagem_processada = datetime.now()
-    
-    # Localizar todas as mensagens no WhatsApp Web
-    bolhas_mensagens = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in")]')
-    
+    bolhas_mensagens = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
+
     for bolha in bolhas_mensagens:
         try:
             nome = "Você"
             horario = "Desconhecido"
-            data_mensagem = None
-            classe_msg = bolha.get_attribute("class")
-            
-            if "message-in" in classe_msg:
-                try:
-                    nome_elemento = bolha.find_element(By.XPATH, './/div[contains(@class, "copyable-text")]')
-                    nome_completo = nome_elemento.get_attribute("data-pre-plain-text")
-                    if "[" in nome_completo and "]" in nome_completo:
-                        horario_texto = nome_completo.split("]")[0].replace("[", "").strip()
-                        nome = nome_completo.split("] ")[-1].strip()
-                        try:
-                            data_mensagem = datetime.strptime(horario_texto, "%H:%M, %d/%m/%Y")
-                            horario = data_mensagem.strftime("%H:%M")
-                        except ValueError:
-                            print(f"⚠️ Formato de data não reconhecido: {horario_texto}")
-                            continue
-                except Exception as e:
-                    print(f"⚠️ Erro ao processar mensagem recebida: {e}")
-                    continue
-            elif "message-out" in classe_msg:
-                data_mensagem = datetime.now()
-                horario = data_mensagem.strftime("%H:%M")
-                nome = "Você"
-            
-            texto_elementos = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
-            texto = " ".join([t.text for t in texto_elementos])
-            
-            if not texto.startswith("📍 transferência"):
-                continue
-            
-            if data_mensagem and data_mensagem >= ultima_mensagem_processada:
-                try:
-                    imagem_elemento = bolha.find_element(By.XPATH, './/img[contains(@src, "blob:") or contains(@class, "media")]')
-                    imagem_url = imagem_elemento.get_attribute("src")
-                except Exception:
-                    imagem_elemento = None
-                    imagem_url = None
-                
-                categoria = classificar_categoria(texto)
-                if categoria:
-                    identificador = f"{nome}-{horario}-{texto}"
-                    if identificador not in mensagens_processadas:
-                        mensagens_processadas.add(identificador)
-                        print(f"📩 Mensagem de {nome} às {horario}\n {texto}")
-                        ultima_mensagem_processada = datetime.now()
-                        mensagens_extraidas.append((nome, horario, categoria, imagem_url, imagem_elemento))
+
+            if "message-in" in bolha.get_attribute("class"):  # Se for uma mensagem recebida
+                nome_elemento = bolha.find_element(By.XPATH, './/div[contains(@class, "copyable-text")]')
+                nome = nome_elemento.get_attribute("data-pre-plain-text")
+
+                # Extraindo o horário da mensagem
+                if "[" in nome and "]" in nome:
+                    horario = nome.split("]")[0].replace("[", "").strip()
+                    nome = nome.split("] ")[-1].strip()
+
+            # Capturar o texto da mensagem
+            texto_elemento = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
+            texto = " ".join([t.text for t in texto_elemento])  # Combina textos longos
+
+            if "Pix" in texto or "R$" in texto:  # Filtra mensagens que podem ser comprovantes
+                identificador = f"{nome}-{horario}-{texto}"
+
+                if identificador not in mensagens_processadas:
+                    mensagens_processadas.add(identificador)
+                    categoria = classificar_categoria(texto)
+
+                    print(f"📩 Mensagem de |{nome} às |{horario}|: {texto}|")
+
+                    mensagens_extraidas.append((nome, horario, categoria, texto))
+
         except Exception as e:
             print(f"⚠️ Erro ao extrair mensagem: {e}")
-    
+
     return mensagens_extraidas
 
-def baixar_imagem(imagem_elemento, nome_arquivo):
-    """Faz o download da imagem, usando JavaScript se for URL blob ou requests."""
-    try:
-        imagem_url = imagem_elemento.get_attribute("src")
-        if imagem_url.startswith("blob:"):
-            script = f"""
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '{imagem_url}', true);
-            xhr.responseType = 'blob';
-            xhr.onload = function() {{
-                var blob = xhr.response;
-                var reader = new FileReader();
-                reader.onloadend = function() {{
-                    var base64data = reader.result;
-                    var link = document.createElement('a');
-                    link.href = base64data;
-                    link.download = '{nome_arquivo}';
-                    link.click();
-                }}; 
-                reader.readAsDataURL(blob);
-            }}; 
-            xhr.send();
-            """
-            navegador.execute_script(script)
-            print(f"✅ Imagem {nome_arquivo} baixada com sucesso!")
+# Loop infinito para monitorar mensagens novas
+while True:
+    mensagens = extrair_mensagens()
+
+    if not mensagens:
+        print("⏳ Nenhuma nova mensagem encontrada. Aguardando...")
+
+    for nome, horario, categoria, mensagem in mensagens:
+        if categoria == "Funcionário":
+            arquivo = csv_funcionario
+        elif categoria == "Motoboy":
+            arquivo = csv_motoboy
         else:
-            resposta = requests.get(imagem_url)
-            with open(nome_arquivo, 'wb') as file:
-                file.write(resposta.content)
-            print(f"✅ Imagem {nome_arquivo} baixada com sucesso!")
-    except Exception as e:
-        print(f"⚠️ Erro ao baixar imagem: {e}")
+            continue  # Ignora categorias irrelevantes
 
-# Função principal de execução
-def main():
-    while True:
-        print("🔄 Procurando novas mensagens...")
-        mensagens_extraidas = extrair_mensagens()
-        if not mensagens_extraidas:
-            print("🔴 Nenhuma nova mensagem encontrada.")
-        for nome, horario, categoria, imagem_url, imagem_elemento in mensagens_extraidas:
-            nome_arquivo = gerar_nome_arquivo(nome, horario)
-            if imagem_elemento:
-                baixar_imagem(imagem_elemento, nome_arquivo)
-        time.sleep(10)  # Aguardar 10 segundos antes de buscar novamente
+        print(f"💾 Salvando no arquivo: {arquivo}")
 
-# Rodar o script
-if __name__ == "__main__":
-    main()
+        # Salvar no arquivo CSV correspondente
+        try:
+            with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow([nome, horario, "", mensagem])
+            print(f"✅ Mensagem salva: {mensagem}")
+        except Exception as e:
+            print(f"⚠️ Erro ao salvar no CSV: {e}")
+
+    time.sleep(15)  # Espera 15 segundos antes de verificar novamente
+
+
+
+
+#CÓDIGO BASE: FUNCIONAMENTO OKAY(EXTRAÇÃO DE TRANSFERENCIA COM DATA/HORA,NOME DE QUEM ENVIOU A MENSAGEM,Valor, Categoria)
+
+
