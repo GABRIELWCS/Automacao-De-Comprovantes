@@ -3,3 +3,40 @@ venv
 {chrome_profile_path}
 app1.py
 dependences.txt
+
+
+CAMINHOS GABRIEL(WIN)
+
+# Substituindo o caminho do chromedriver diretamente no código
+{
+    "chrome_profile_path": "C:/Users/Gabriel Souza/AppData/Local/Google/Chrome/User Data/Default",
+    "chromedriver_path": "C:/Users/Gabriel Souza/Desktop/WebDriver",
+    "base_folder_path": "C:/Users/Gabriel Souza/Desktop/clonegit/Sistema-Hamburgueria-/Comprovantes",
+    "dowloands_folder_path": "C:/Users/Gabriel Souza/Downloads",
+    "tesseract_path": "C:/Program Files/Tesseract-OCR/tesseract.exe"
+}
+
+
+
+
+
+#Guardando backup do selenium que nao esta funcionando
+
+
+
+def esperar_carregamento_entrada():
+    """Esperar até o QR Code ser escaneado ou o WhatsApp Web carregar completamente."""
+    while True:
+        try:
+            # Esperar até o QR Code ser escaneado (essa div aparece enquanto o QR Code é mostrado)
+            WebDriverWait(navegador, 60).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@title="Pesquisar ou iniciar nova conversa"]'))
+            )
+            print("✅ WhatsApp Web carregado com sucesso! Pronto para começar.")
+            break  # O WhatsApp Web carregou completamente
+        except Exception as e:
+            print(f"🟠 Aguardando o QR Code ser escaneado... Erro: {e}")
+            time.sleep(5)  # Aguardar um pouco e tentar novamente
+
+navegador = configurar_selenium()
+esperar_carregamento_entrada()

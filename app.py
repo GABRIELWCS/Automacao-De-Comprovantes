@@ -1,42 +1,16 @@
-import csv
-import time
-import os
-import json
-import requests
-import cv2
-import pytesseract as ts
-import re
-import openpyxl
-import threading
-import sys
-import select
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from datetime import datetime, timedelta
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+import os
+import re
+from openpyxl import Workbook, load_workbook
+import pandas as pd
 
-# Variável global para rastrear a última mensagem processada
-ultima_mensagem_processada = None
-
-# ----- CONFIGURAÇÃO INICIAL -----
-def carregar_configuracoes():
-    """Carrega as configurações do arquivo JSON."""
-    with open('config.json') as config_file:
-        return json.load(config_file)
-
-config = carregar_configuracoes()
-chromedriver_path = config['chromedriver_path']
-chrome_profile_path = config['chrome_profile_path']
-base_folder_path = config['base_folder_path']
-dowloands_folder_path = config['dowloands_folder_path']
-tesseract_path = config['tesseract_path']
-
-# Configurar o Tesseract
-ts.pytesseract.tesseract_cmd = tesseract_path
-
+# Função para limpar a pasta de registros antigos
 def limpar_pasta(pasta):
-    """Remove todos os arquivos da pasta especificada."""
     if os.path.exists(pasta):
         for arquivo in os.listdir(pasta):
             caminho_arquivo = os.path.join(pasta, arquivo)
@@ -46,310 +20,172 @@ def limpar_pasta(pasta):
             except Exception as e:
                 print(f"⚠️ Erro ao remover {arquivo}: {e}")
 
-# Limpar a pasta "Comprovantes" antes de iniciar
+# Limpa a pasta antes de iniciar se necessário
 limpar_pasta("Comprovantes")
 print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
 
 # Configuração do Selenium
-def configurar_selenium():
-    """Configura e inicia o navegador Selenium."""
-    chrome_options = Options()
-    chrome_options.add_argument(f"--user-data-dir={chrome_profile_path}")
-    servico = Service(chromedriver_path)
-    navegador = webdriver.Chrome(service=servico, options=chrome_options)
-    navegador.get("https://web.whatsapp.com/")
-    return navegador
+chrome_options = Options()
+chrome_options.add_argument("--user-data-dir=C:\\Users\\Gabriel Souza\\AppData\\Local\\Google\\Chrome\\User Data")
+service = Service(ChromeDriverManager().install())
 
-navegador = configurar_selenium()
+# Iniciar o navegador
+navegador = webdriver.Chrome(service=service, options=chrome_options)
+navegador.get("https://web.whatsapp.com/")
+
+# Aguardar login do usuário
 input("📲 Escaneie o QR Code e pressione Enter para continuar...")
 
-# Diretórios e arquivos de saída
-os.makedirs(base_folder_path, exist_ok=True)
+# Criar diretório
+pasta_base = "Comprovantes"
+os.makedirs(pasta_base, exist_ok=True)
 
-csv_funcionario = os.path.join(base_folder_path, "comprovantes_funcionario.csv")
-csv_motoboy = os.path.join(base_folder_path, "comprovantes_motoboy.csv")
+# Definição dos arquivos Excel
+xlsx_funcionario = os.path.join(pasta_base, "comprovantes_funcionario.xlsx")
+xlsx_motoboy = os.path.join(pasta_base, "comprovantes_motoboy.xlsx")
 
-def criar_arquivos_csv():
-    """Cria arquivos CSV com cabeçalho, se não existirem."""
-    for arquivo in [csv_funcionario, csv_motoboy]:
-        if not os.path.exists(arquivo):
-            with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Nome", "Horário", "Valor", "Destinatário", "Categoria"])
+# Função para criar arquivos Excel caso não existam
+def criar_arquivo_excel(arquivo):
+    if not os.path.exists(arquivo):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["Nome", "Horário", "Valor", "Mensagem Completa"])
+        wb.save(arquivo)
+        print(f"📊 Arquivo criado: {arquivo}")
 
-criar_arquivos_csv()
+# Criar arquivos Excel
+criar_arquivo_excel(xlsx_funcionario)
+criar_arquivo_excel(xlsx_motoboy)
 
-# Conjunto para mensagens processadas (para evitar duplicatas)
+# Função para ajustar a largura das colunas no Excel
+def ajustar_largura_colunas(arquivo):
+    wb = load_workbook(arquivo)
+    ws = wb.active
+
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column].width = adjusted_width
+
+    wb.save(arquivo)
+
+# Função para carregar mensagens já salvas no Excel
+def carregar_mensagens_anteriores(arquivo):
+    wb = load_workbook(arquivo)
+    ws = wb.active
+    mensagens_existentes = set()
+
+    for row in ws.iter_rows(min_row=2, values_only=True):  # Pular a primeira linha de cabeçalho
+        nome, horario, valor, mensagem = row
+        identificador = f"{nome}-{horario}-{valor}-{mensagem}"
+        mensagens_existentes.add(identificador)
+
+    return mensagens_existentes
+
+# Conjunto para armazenar mensagens já processadas
 mensagens_processadas = set()
 
-# ----- FUNÇÕES AUXILIARES -----
+# Função para classificar categoria
 def classificar_categoria(mensagem):
-    """Retorna a categoria se a mensagem começar com '📍 transferência', senão None."""
-    if mensagem.startswith("📍 transferência"):
-        mensagem_lower = mensagem.lower()
-        if "motoboy" in mensagem_lower:
-            return "Motoboy"
-        elif "funcionário" in mensagem_lower:
-            return "Funcionário"
-        else:
-            return "Outros"
-    return None
+    if "motoboy" in mensagem.lower():
+        return "Motoboy"
+    elif "funcionario" or "funcionário" in mensagem.lower():
+        return "Funcionário"
+    return "Outros"
 
-def gerar_nome_arquivo(nome, horario):
-    """Gera um nome de arquivo simples removendo caracteres especiais."""
-    nome_limpo = re.sub(r'[^\w]', '', nome)[:12]  # Limita para 12 caracteres
-    horario_limpo = re.sub(r'[^\d]', '', horario)
-    return f"{nome_limpo}_{horario_limpo}.jpg".strip()
+# Função para extrair valor do Pix
+def extrair_valor(mensagem):
+    padrao_valor = r'R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})?'
+    valores = re.findall(padrao_valor, mensagem)
+    return valores[0].replace(" ", "") if valores else "Não encontrado"
 
+# Função para remover erros de codificação
+def corrigir_acentuacao(texto):
+    return texto.encode('utf-8').decode('utf-8-sig')
+
+# Extrair mensagens
 def extrair_mensagens():
-    """Extrai mensagens e imagens do WhatsApp que estejam começando com '📍 transferência' 
-       e que foram enviadas após o início da execução."""
-    global ultima_mensagem_processada
-    mensagens_extraidas = []
-    
-    if ultima_mensagem_processada is None:
-        ultima_mensagem_processada = datetime.now()
-    
-    bolhas_mensagens = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
-    
-    for bolha in bolhas_mensagens:
+    global mensagens_processadas
+    novas_mensagens = []
+
+    bolhas = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
+
+    for bolha in bolhas:
         try:
             nome = "Você"
             horario = "Desconhecido"
-            data_mensagem = None
-            classe_msg = bolha.get_attribute("class")
-            
-            if "message-in" in classe_msg:
-                try:
-                    nome_elemento = bolha.find_element(By.XPATH, './/div[contains(@class, "copyable-text")]')
-                    nome_completo = nome_elemento.get_attribute("data-pre-plain-text")
-                    if "[" in nome_completo and "]" in nome_completo:
-                        horario_texto = nome_completo.split("]")[0].replace("[", "").strip()
-                        nome = nome_completo.split("] ")[-1].strip()
-                        try:
-                            data_mensagem = datetime.strptime(horario_texto, "%I:%M %p, %d/%m/%Y")
-                            horario = data_mensagem.strftime("%H:%M")
-                        except ValueError:
-                            print(f"⚠️ Formato de data não reconhecido: {horario_texto}")
-                            continue
-                except Exception as e:
-                    print(f"⚠️ Erro ao processar mensagem recebida: {e}")
-                    continue
-            elif "message-out" in classe_msg:
-                data_mensagem = datetime.now()
-                horario = data_mensagem.strftime("%H:%M")
-                nome = "Você"
-            
-            texto_elementos = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
-            texto = " ".join([t.text for t in texto_elementos])
-            
-            if not texto.startswith("📍 transferência"):
-                continue
-            
-            if data_mensagem and data_mensagem >= ultima_mensagem_processada:
-                try:
-                    imagem_elemento = bolha.find_element(By.XPATH, './/img[contains(@src, "blob:") or contains(@class, "media")]')
-                    imagem_url = imagem_elemento.get_attribute("src")
-                except Exception:
-                    imagem_elemento = None
-                    imagem_url = None
-                
+
+            if "message-in" in bolha.get_attribute("class"):
+                nome_elemento = bolha.find_element(By.XPATH, './/div[contains(@class, "copyable-text")]')
+                nome = nome_elemento.get_attribute("data-pre-plain-text")
+
+                if "[" in nome and "]" in nome:
+                    horario = nome.split("]")[0].replace("[", "").strip()
+                    nome = nome.split("] ")[-1].strip()
+
+            texto_elemento = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
+            texto = " ".join([t.text for t in texto_elemento]).strip()
+
+            if "Pix" in texto or "R$" in texto:
                 categoria = classificar_categoria(texto)
-                if categoria:
-                    identificador = f"{nome}-{horario}-{texto}"
-                    if identificador not in mensagens_processadas:
-                        mensagens_processadas.add(identificador)
-                        print(f"📩 Mensagem de {nome} às {horario}\n {texto}")
-                        ultima_mensagem_processada = datetime.now()
-                        mensagens_extraidas.append((nome, horario, categoria, imagem_url, imagem_elemento))
+                valor = extrair_valor(texto)
+
+                mensagem_limpa = corrigir_acentuacao(" ".join(texto.split()))
+
+                identificador = f"{nome}-{horario}-{valor}-{mensagem_limpa}"
+
+                # Verificar se a mensagem já foi processada
+                if identificador not in mensagens_processadas:
+                    mensagens_processadas.add(identificador)
+                    novas_mensagens.append((nome, horario, categoria, valor, mensagem_limpa))
+
         except Exception as e:
             print(f"⚠️ Erro ao extrair mensagem: {e}")
-    
-    return mensagens_extraidas
 
-def baixar_imagem(imagem_elemento, nome_arquivo):
-    """Faz o download da imagem, usando JavaScript se for URL blob ou requests."""
-    try:
-        imagem_url = imagem_elemento.get_attribute("src")
-        if imagem_url.startswith("blob:"):
-            script = f"""
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '{imagem_url}', true);
-            xhr.responseType = 'blob';
-            xhr.onload = function() {{
-                var blob = xhr.response;
-                var reader = new FileReader();
-                reader.onloadend = function() {{
-                    var base64data = reader.result;
-                    var link = document.createElement('a');
-                    link.href = base64data;
-                    link.download = '{nome_arquivo}';
-                    link.click();
-                }};
-                reader.readAsDataURL(blob);
-            }};
-            xhr.send();
-            """
-            navegador.execute_script(script)
-            print(f"✅ Imagem salva como: {nome_arquivo}")
+    return novas_mensagens
+
+# Monitoramento contínuo
+while True:
+    mensagens = extrair_mensagens()
+
+    if not mensagens:
+        print("⏳ Nenhuma nova mensagem encontrada. Aguardando...")
+
+    for nome, horario, categoria, valor, mensagem in mensagens:
+        if categoria == "Funcionário":
+            arquivo_excel = xlsx_funcionario
+        elif categoria == "Motoboy":
+            arquivo_excel = xlsx_motoboy
         else:
-            resposta = requests.get(imagem_url)
-            if resposta.status_code == 200:
-                with open(nome_arquivo, 'wb') as f:
-                    f.write(resposta.content)
-                print(f"✅ Imagem salva como: {nome_arquivo}")
-            else:
-                print(f"⚠️ Erro ao baixar a imagem: Status {resposta.status_code}")
-    except Exception as e:
-        print(f"⚠️ Erro ao baixar a imagem: {e}")
+            continue
 
-def analisar_imagem(nome_imagem, pasta_downloads=dowloands_folder_path, tentativas_max=10, intervalo_espera=1):
-    """Tenta localizar e analisar a imagem na pasta de downloads, com múltiplas tentativas."""
-    for tentativa in range(tentativas_max):
-        try:
-            caminho_imagem = os.path.join(pasta_downloads, nome_imagem)
-            arquivos_na_pasta = os.listdir(pasta_downloads)
-            
-            arquivo_encontrado = None
-            for arquivo in arquivos_na_pasta:
-                if (arquivo.lower().replace('ç', 'c') == nome_imagem.lower().replace('ç', 'c')):
-                    arquivo_encontrado = os.path.join(pasta_downloads, arquivo)
-                    break
-            
-            if not arquivo_encontrado:
-                print(f"⚠️ Imagem não encontrada na tentativa {tentativa + 1}. Aguardando...")
-                time.sleep(intervalo_espera)
-                continue
+        # Carregar mensagens já salvas para evitar duplicação
+        mensagens_existentes = carregar_mensagens_anteriores(arquivo_excel)
 
-            caminho_imagem = arquivo_encontrado
-            print(f"Arquivo encontrado: {caminho_imagem}")
+        identificador = f"{nome}-{horario}-{valor}-{mensagem}"
+        if identificador not in mensagens_existentes:
+            print(f"💾 Salvando no arquivo: {arquivo_excel}")
 
-            if os.path.getsize(caminho_imagem) == 0:
-                print(f"⚠️ Arquivo vazio na tentativa {tentativa + 1}. Aguardando...")
-                time.sleep(intervalo_espera)
-                continue
-
-            img = cv2.imread(caminho_imagem)
-            if img is None:
-                print(f"⚠️ Erro ao carregar a imagem na tentativa {tentativa + 1}. Aguardando...")
-                time.sleep(intervalo_espera)
-                continue
-
-            text_img = ts.image_to_string(img, lang='por')
-            valor = re.findall(r'R\$\s*\d+[\.,]?\d*', text_img)
-            destinatario = re.findall(r'(?i)(?:para|nome do favorecido)\s*:?\s*([^\n]+)', text_img)
-
-            if valor:
-                valor = valor[0].strip()
-            else:
-                valor = "Valor não encontrado"
-
-            if destinatario:
-                ditemp = destinatario[0].strip().replace('\n', ' ')
-                destinatario = ' '.join(ditemp.split())
-            else:
-                destinatario = "Destinatário não encontrado"
-
-            return valor, destinatario
-
-        except Exception as e:
-            print(f"Erro na tentativa {tentativa + 1}: {e}")
-            time.sleep(intervalo_espera)
-
-    print(f"⚠️ Falha ao processar a imagem {nome_imagem} após {tentativas_max} tentativas.")
-    return None, None
-
-def verificar_entrada():
-    """Verifica se foi digitado 'e' no terminal para encerrar sem bloquear a execução."""
-    if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-        linha = sys.stdin.readline().strip().lower()
-        if linha == 'e':
-            return True
-    return False
-
-def converter_csv_para_excel(caminho_csv, caminho_excel):
-    """Converte um arquivo CSV para Excel."""
-    try:
-        with open(caminho_csv, 'r', encoding='utf-8') as file_csv:
-            csv_reader = csv.reader(file_csv)
-            workbook = openpyxl.Workbook()
-            sheet = workbook.active
-            for linha in csv_reader:
-                sheet.append(linha)
-            for coluna in sheet.columns:
-                max_length = 0
-                coluna_letra = coluna[0].column_letter
-                for celula in coluna:
-                    try:
-                        max_length = max(max_length, len(str(celula.value)))
-                    except:
-                        pass
-                sheet.column_dimensions[coluna_letra].width = max_length + 2
-            workbook.save(caminho_excel)
-            print(f"✅ Arquivo Excel gerado: {caminho_excel}")
-    except Exception as e:
-        print(f"⚠️ Erro ao converter CSV para Excel: {e}")
-
-def thread_verificacao_entrada():
-    """Thread para verificar entrada do usuário e encerrar o programa."""
-    global continuar_execucao
-    while continuar_execucao:
-        if verificar_entrada():
-            continuar_execucao = False
-            print("\n🛑 Encerrando o programa...")
-            break
-        time.sleep(0.5)
-
-# Variável global para controle da execução
-continuar_execucao = True
-thread_entrada = threading.Thread(target=thread_verificacao_entrada)
-thread_entrada.daemon = True
-thread_entrada.start()
-
-print("🚀 Programa iniciado. Digite 'e' a qualquer momento para encerrar.")
-
-# ----- LOOP PRINCIPAL -----
-try:
-    while continuar_execucao:
-        mensagens = extrair_mensagens()
-        if not mensagens:
-            print("⏳ Nenhuma nova mensagem encontrada. Aguardando...")
-
-        for nome, horario, categoria, imagem_url, imagem_elemento in mensagens:
-            if not continuar_execucao:
-                break
-
-            if categoria == "Funcionário":
-                arquivo = csv_funcionario
-            elif categoria == "Motoboy":
-                arquivo = csv_motoboy
-            else:
-                continue
-
-            print(f"💾 Salvando no arquivo: {arquivo}")
             try:
-                with open(arquivo, mode="a", newline="", encoding="utf-8") as file:
-                    writer = csv.writer(file)
-                    if imagem_elemento:
-                        nome_imagem = gerar_nome_arquivo(nome, horario)
-                        baixar_imagem(imagem_elemento, nome_imagem)
-                        valor, destinatario = analisar_imagem(nome_imagem)
-                        print(f"Valor: {valor}, Destinatário: {destinatario}")
-                        writer.writerow([nome, horario, valor, destinatario, categoria])
-                print("✅ Mensagem salva")
+                wb = load_workbook(arquivo_excel)
+                ws = wb.active
+                ws.append([nome, horario, valor, mensagem])
+                wb.save(arquivo_excel)
+                print(f"✅ Mensagem salva: {mensagem}")
+
+                # Ajustar a largura das colunas após salvar
+                ajustar_largura_colunas(arquivo_excel)
+
             except Exception as e:
-                print(f"⚠️ Erro ao salvar no CSV: {e}")
+                print(f"⚠️ Erro ao salvar no Excel: {e}")
+        else:
+            print("🛑 Mensagem já salva, ignorando.")
 
-        time.sleep(3)
-
-except KeyboardInterrupt:
-    print("\n🛑 Interrupção do usuário detectada.")
-    continuar_execucao = False
-
-finally:
-    if os.path.exists(csv_funcionario):
-        converter_csv_para_excel(csv_funcionario, os.path.join(base_folder_path, "comprovantes_funcionario.xlsx"))
-    if os.path.exists(csv_motoboy):
-        converter_csv_para_excel(csv_motoboy, os.path.join(base_folder_path, "comprovantes_motoboy.xlsx"))
-    print("📊 Conversão de CSVs para Excel concluída.")
-    thread_entrada.join()
+    time.sleep(35)
