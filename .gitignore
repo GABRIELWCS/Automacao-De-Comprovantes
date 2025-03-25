@@ -46,3 +46,18 @@ esperar_carregamento_entrada()
 venv
 config.json
 >>>>>>> 5874e7bcc4676a78ed49a1579bf88ed80d8370bb
+
+
+
+
+# Ajustar a largura das colunas após salvar
+                ajustar_largura_colunas(arquivo_excel)
+
+            except Exception as e:
+                print(f"⚠️ Erro ao salvar no Excel: {e}")
+        else:
+            print("🛑 Mensagem já salva, ignorando.")
+
+    time.sleep(5)
+
+limpar_imagens_baixadas(dowloands_folder_path, imagens_baixadas)

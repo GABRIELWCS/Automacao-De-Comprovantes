@@ -2,10 +2,11 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-#from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.chrome import ChromeDriverManager
 import time
 import os
 import re
+import shutil
 import json
 import cv2
 import hashlib
@@ -17,42 +18,48 @@ import pytesseract as ts
 from selenium.common.exceptions import NoSuchElementException
 
 # ----- CONFIGURAÇÃO INICIAL -----
-def carregar_configuracoes():
-    """Carrega as configurações do arquivo JSON."""
-    with open('config.json') as config_file:
-        return json.load(config_file)
 
-config = carregar_configuracoes()
-chromedriver_path = config['chromedriver_path']
-chrome_profile_path = config['chrome_profile_path']
-base_folder_path = config['base_folder_path']
-dowloands_folder_path = config['dowloands_folder_path']
-tesseract_path = config['tesseract_path']
+# Caminhos definidos diretamente no código
+chromedriver_path = os.path.join(os.getenv("ProgramFiles"), "Google", "chromedriver-win64", "chromedriver.exe")
+chrome_profile_path = os.path.join(os.getenv("LOCALAPPDATA"), "Google", "Chrome", "User Data", "Default")
+base_folder_path = os.path.join(os.getenv("USERPROFILE"), "Downloads", "Comprovantes")
+downloads_folder_path = os.path.join(os.getenv("USERPROFILE"), "Downloads")
+tesseract_path = shutil.which("tesseract") or os.path.join(os.getenv("ProgramFiles"), "Tesseract-OCR", "tesseract.exe")
 
 # Configurar o Tesseract
 ts.pytesseract.tesseract_cmd = tesseract_path
+# Definir o idioma para o Tesseract (Português)
+tessdata_path = "C:/Program Files/Tesseract-OCR/tessdata"
+# Confirmar que o caminho do executável está correto
+ts.pytesseract.tesseract_cmd = tesseract_path
+# Definir o caminho correto da tessdata
+os.environ['TESSDATA_PREFIX'] = tessdata_path
 
+
+imagens_processadas = set()
 imagens_baixadas = []
 programa_ativo = True
 
+
 # Função para limpar a pasta de registros antigos
-def limpar_pasta(pasta):
-    if os.path.exists(pasta):
-        for arquivo in os.listdir(pasta):
-            caminho_arquivo = os.path.join(pasta, arquivo)
-            try:
-                if os.path.isfile(caminho_arquivo):
-                    os.remove(caminho_arquivo)
-            except Exception as e:
-                print(f"⚠️ Erro ao remover {arquivo}: {e}")
+#def limpar_pasta(pasta):
+   # if os.path.exists(pasta):
+       # for arquivo in os.listdir(pasta):
+           # caminho_arquivo = os.path.join(pasta, arquivo)
+            #try:
+              #  if os.path.isfile(caminho_arquivo):
+               #     os.remove(caminho_arquivo)
+           # except Exception as e:
+               # print(f"⚠️ Erro ao remover {arquivo}: {e}")
+
 
 # Limpa a pasta antes de iniciar se necessário
-limpar_pasta("Comprovantes")
-print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
+#limpar_pasta("Comprovantes")
+#print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
 
 # Configuração do Selenium
 chrome_options = Options()
-chrome_options.add_argument("--user-data-dir={chrome_profile_path}")
+chrome_options.add_argument(f"--user-data-dir={chrome_profile_path}")
 service = Service(chromedriver_path)
 
 # Iniciar o navegador
@@ -76,9 +83,11 @@ def criar_arquivo_excel(arquivo):
     if not os.path.exists(arquivo):
         wb = Workbook()
         ws = wb.active
-        ws.append(["Nome", "Horário", "Valor", "Destinatário", "Mensagem Completa"])
+        ws.append(["Nome", "Horário", "Valor",
+                  "Destinatário", "Categoria"])
         wb.save(arquivo)
         print(f"📊 Arquivo criado: {arquivo}")
+
 
 # Criar arquivos Excel
 criar_arquivo_excel(xlsx_funcionario)
@@ -109,7 +118,8 @@ def carregar_mensagens_anteriores(arquivo):
     ws = wb.active
     mensagens_existentes = set()
 
-    for row in ws.iter_rows(min_row=2, values_only=True):  # Pular a primeira linha de cabeçalho
+    # Pular a primeira linha de cabeçalho
+    for row in ws.iter_rows(min_row=2, values_only=True):
         nome, horario, valor, destinatario, mensagem = row
         identificador = f"{nome}-{horario}-{valor}-{mensagem}"
         mensagens_existentes.add(identificador)
@@ -137,8 +147,10 @@ def extrair_valor(mensagem):
 def corrigir_acentuacao(texto):
     return texto.encode('utf-8').decode('utf-8-sig')
 
+
 def gerar_nome_arquivo_hash(identificador):
     return hashlib.md5(identificador.encode()).hexdigest() + ".jpeg"
+
 
 def baixar_imagem(imagem_elemento, nome_arquivo):
     """Faz o download da imagem, usando JavaScript se for URL blob ou requests."""
@@ -158,9 +170,9 @@ def baixar_imagem(imagem_elemento, nome_arquivo):
                     link.href = base64data;
                     link.download = '{nome_arquivo}';
                     link.click();
-                }};
+                }}; 
                 reader.readAsDataURL(blob);
-            }};
+            }}; 
             xhr.send();
             """
             navegador.execute_script(script)
@@ -174,23 +186,25 @@ def baixar_imagem(imagem_elemento, nome_arquivo):
                 imagens_baixadas.append(nome_arquivo)
                 print(f"✅ Imagem salva como: {nome_arquivo}")
             else:
-                print(f"⚠️ Erro ao baixar a imagem: Status {resposta.status_code}")
+                print(
+                    f"⚠️ Erro ao baixar a imagem: Status {resposta.status_code}")
     except Exception as e:
         print(f"⚠️ Erro ao baixar a imagem: {e}")
 
-def analisar_imagem(nome_imagem, pasta_downloads=dowloands_folder_path, tentativas_max=10, intervalo_espera=1):
+
+def analisar_imagem(nome_imagem, pasta_downloads=downloads_folder_path, tentativas_max=10, intervalo_espera=1):
     """Tenta localizar e analisar a imagem na pasta de downloads, com múltiplas tentativas."""
     for tentativa in range(tentativas_max):
         try:
             caminho_imagem = os.path.join(pasta_downloads, nome_imagem)
             arquivos_na_pasta = os.listdir(pasta_downloads)
-            
+
             arquivo_encontrado = None
             for arquivo in arquivos_na_pasta:
-                if (arquivo.lower().replace('ç', 'c') == nome_imagem.lower().replace('ç', 'c')):
+                if (arquivo.lower().replace('ç', 'c') == nome_imagem.lower().replace('ç', 'c')): 
                     arquivo_encontrado = os.path.join(pasta_downloads, arquivo)
                     break
-            
+
             if not arquivo_encontrado:
                 print(f"⚠️ Imagem não encontrada na tentativa {tentativa + 1}. Aguardando...")
                 time.sleep(intervalo_espera)
@@ -224,7 +238,7 @@ def analisar_imagem(nome_imagem, pasta_downloads=dowloands_folder_path, tentativ
                 destinatario = ' '.join(ditemp.split())
             else:
                 destinatario = "Destinatário não encontrado"
-
+        ########    print(f"Valor/Destinario: | {valor} | {destinatario}|")
             return valor, destinatario
 
         except Exception as e:
@@ -234,12 +248,40 @@ def analisar_imagem(nome_imagem, pasta_downloads=dowloands_folder_path, tentativ
     print(f"⚠️ Falha ao processar a imagem {nome_imagem} após {tentativas_max} tentativas.")
     return None, None
 
-# Extrair mensagens
+# Função para extrair mensagens
+
+from openpyxl import load_workbook
+
+def obter_ultimo_horario(arquivo_excel):
+    """ Retorna o último horário armazenado no Excel para evitar duplicação. """
+    try:
+        wb = load_workbook(arquivo_excel)
+        ws = wb.active
+
+        horarios = []
+        for row in ws.iter_rows(min_row=2, values_only=True):  # Pulando cabeçalho
+            if row[1]:  # Coluna de horário (índice 1)
+                horarios.append(row[1])
+
+        wb.close()
+        if horarios:
+            return max(horarios)  # Retorna o maior horário encontrado
+        return None
+    except Exception as e:
+        print(f"⚠️ Erro ao obter o último horário do arquivo {arquivo_excel}: {e}")
+        return None
+
+
+
 def extrair_mensagens():
-    global mensagens_processadas
     novas_mensagens = []
 
     bolhas = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
+
+        # Obter o último horário registrado para cada categoria
+    ultimo_horario_funcionario = obter_ultimo_horario(xlsx_funcionario)
+    ultimo_horario_motoboy = obter_ultimo_horario(xlsx_motoboy)
+
 
     for bolha in bolhas:
         try:
@@ -260,29 +302,35 @@ def extrair_mensagens():
             if texto.startswith("Transferência realizada"):
                 categoria = classificar_categoria(texto)
                 valor = extrair_valor(texto)
+                identificador = f"{nome}-{horario}-{valor}-{texto}"
 
-                mensagem_limpa = corrigir_acentuacao(" ".join(texto.split()))
+               # Verificar se a mensagem é mais recente que o último horário salvo
 
-                identificador = f"{nome}-{horario}-{valor}-{mensagem_limpa}"
+                if categoria == "Funcionário" and ultimo_horario_funcionario and horario <= ultimo_horario_funcionario:
+                    continue
+                if categoria == "Motoboy" and ultimo_horario_motoboy and horario <= ultimo_horario_motoboy:
+                    continue
 
                 try:
                     imagem_elemento = bolha.find_element(By.XPATH, './/img[contains(@src, "blob:") or contains(@class, "media")]')
                 except NoSuchElementException:
                     imagem_elemento = None
 
-                nome_arquivo = gerar_nome_arquivo_hash(identificador)
-                baixar_imagem(imagem_elemento, nome_arquivo)
-                valor, destinatario = analisar_imagem(nome_arquivo)
+                if imagem_elemento:
+                    nome_arquivo = gerar_nome_arquivo_hash(identificador)
+ 
 
-                # Verificar se a mensagem já foi processada
-                if identificador not in mensagens_processadas:
-                    mensagens_processadas.add(identificador)
-                    novas_mensagens.append((nome, horario, categoria, valor, destinatario, mensagem_limpa))
+                if nome_arquivo not in mensagens_processadas:
+                    baixar_imagem(imagem_elemento, nome_arquivo)
+                    valor,destinatario= analisar_imagem(nome_arquivo)
+                    mensagens_processadas.add(nome_arquivo)
+                    novas_mensagens.append((nome, horario, categoria, valor, destinatario, texto))
 
         except Exception as e:
             print(f"⚠️ Erro ao extrair mensagem: {e}")
 
     return novas_mensagens
+
 
 def limpar_imagens_baixadas(pasta, imagens_ids):
     for nome_arquivo in imagens_ids:
@@ -301,6 +349,7 @@ def monitorar_entrada():
         if comando == 'e':
             print("🛑 Comando 'e' recebido. Encerrando o programa...")
             programa_ativo = False
+
 
 thread_monitoramento = threading.Thread(target=monitorar_entrada, daemon=True)
 thread_monitoramento.start()
@@ -327,7 +376,7 @@ while programa_ativo:
             try:
                 wb = load_workbook(arquivo_excel)
                 ws = wb.active
-                ws.append([nome, horario, valor, destinatario, mensagem])
+                ws.append([nome, horario, valor, destinatario, categoria])
                 wb.save(arquivo_excel)
                 print(f"✅ Mensagem salva: {mensagem}")
 
@@ -341,4 +390,4 @@ while programa_ativo:
 
     time.sleep(5)
 
-limpar_imagens_baixadas(dowloands_folder_path, imagens_baixadas)
+limpar_imagens_baixadas(downloads_folder_path, imagens_baixadas)
