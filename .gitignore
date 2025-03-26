@@ -4,6 +4,11 @@ venv
 {chrome_profile_path}
 app1.py
 dependences.txt
+build/
+dist/
+*.pkg
+*.exe
+
 
 
 CAMINHOS GABRIEL(WIN)
