@@ -1,33 +1,39 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+from pathlib import Path
 import time
 import os
 import re
-import shutil
-import json
 import cv2
 import hashlib
 import requests
 import threading
+import sys
 from openpyxl import Workbook, load_workbook
-import pandas as pd
 import pytesseract as ts
 from selenium.common.exceptions import NoSuchElementException
 
 # ----- CONFIGURAÇÃO INICIAL -----
+base_dir = Path(__file__).parent if "__file__" in locals() else Path(os.getcwd())
 
 # Caminhos definidos diretamente no código
-chromedriver_path = os.path.join(os.getenv("ProgramFiles"), "Google", "chromedriver-win64", "chromedriver.exe")
-chrome_profile_path = os.path.join(os.getenv("LOCALAPPDATA"), "Google", "Chrome", "User Data", "Default")
-base_folder_path = os.path.join(os.getenv("USERPROFILE"), "Downloads", "Comprovantes")
-downloads_folder_path = os.path.join(os.getenv("USERPROFILE"), "Downloads")
-tesseract_path = shutil.which("tesseract") or os.path.join(os.getenv("ProgramFiles"), "Tesseract-OCR", "tesseract.exe")
+#chromedriver_path = os.path.join(os.getenv("PROGRAMFILES(X86)"), "Google", "chromedriver-win64", "chromedriver.exe")
+chrome_profile_path = Path(os.getenv("LOCALAPPDATA", "C:\\Users\\Public")) / "Google" / "Chrome" / "User Data" / "Default"
+base_folder_path = Path.home() / "Downloads" / "Comprovantes"
+downloads_folder_path = Path.home() / "Downloads"
+
+# Se o script está rodando como executável, ajusta o caminho do Tesseract
+if getattr(sys, 'frozen', False):
+    base_dir = Path(sys._MEIPASS)  # Pasta temporária criada pelo PyInstaller
+    tesseract_path = base_dir / "Tesseract-OCR" / "tesseract.exe"
+else:
+    tesseract_path = Path("C:/Program Files/Tesseract-OCR/tesseract.exe")
 
 # Configurar o Tesseract
-ts.pytesseract.tesseract_cmd = tesseract_path
+ts.pytesseract.tesseract_cmd = str(tesseract_path)
 # Definir o idioma para o Tesseract (Português)
 tessdata_path = "C:/Program Files/Tesseract-OCR/tessdata"
 # Confirmar que o caminho do executável está correto
@@ -41,26 +47,10 @@ imagens_baixadas = []
 programa_ativo = True
 
 
-# Função para limpar a pasta de registros antigos
-#def limpar_pasta(pasta):
-   # if os.path.exists(pasta):
-       # for arquivo in os.listdir(pasta):
-           # caminho_arquivo = os.path.join(pasta, arquivo)
-            #try:
-              #  if os.path.isfile(caminho_arquivo):
-               #     os.remove(caminho_arquivo)
-           # except Exception as e:
-               # print(f"⚠️ Erro ao remover {arquivo}: {e}")
-
-
-# Limpa a pasta antes de iniciar se necessário
-#limpar_pasta("Comprovantes")
-#print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
-
 # Configuração do Selenium
 chrome_options = Options()
 chrome_options.add_argument(f"--user-data-dir={chrome_profile_path}")
-service = Service(chromedriver_path)
+service = Service(ChromeDriverManager().install())
 
 # Iniciar o navegador
 navegador = webdriver.Chrome(service=service, options=chrome_options)
@@ -78,6 +68,7 @@ os.makedirs(pasta_base, exist_ok=True)
 xlsx_funcionario = os.path.join(pasta_base, "comprovantes_funcionario.xlsx")
 xlsx_motoboy = os.path.join(pasta_base, "comprovantes_motoboy.xlsx")
 
+
 # Função para criar arquivos Excel caso não existam
 def criar_arquivo_excel(arquivo):
     if not os.path.exists(arquivo):
@@ -87,11 +78,12 @@ def criar_arquivo_excel(arquivo):
                   "Destinatário", "Categoria"])
         wb.save(arquivo)
         print(f"📊 Arquivo criado: {arquivo}")
-
-
+        
 # Criar arquivos Excel
 criar_arquivo_excel(xlsx_funcionario)
 criar_arquivo_excel(xlsx_motoboy)
+
+
 
 # Função para ajustar a largura das colunas no Excel
 def ajustar_largura_colunas(arquivo):
@@ -129,6 +121,8 @@ def carregar_mensagens_anteriores(arquivo):
 # Conjunto para armazenar mensagens já processadas
 mensagens_processadas = set()
 
+
+
 # Função para classificar categoria
 def classificar_categoria(mensagem):
     if "motoboy" in mensagem.lower():
@@ -137,11 +131,17 @@ def classificar_categoria(mensagem):
         return "Funcionário"
     return "Outros"
 
+
+
+
 # Função para extrair valor do Pix
 def extrair_valor(mensagem):
     padrao_valor = r'R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})?'
     valores = re.findall(padrao_valor, mensagem)
     return valores[0].replace(" ", "") if valores else "Não encontrado"
+
+
+
 
 # Função para remover erros de codificação
 def corrigir_acentuacao(texto):
@@ -238,7 +238,7 @@ def analisar_imagem(nome_imagem, pasta_downloads=downloads_folder_path, tentativ
                 destinatario = ' '.join(ditemp.split())
             else:
                 destinatario = "Destinatário não encontrado"
-        ########    print(f"Valor/Destinario: | {valor} | {destinatario}|")
+    
             return valor, destinatario
 
         except Exception as e:
@@ -248,10 +248,10 @@ def analisar_imagem(nome_imagem, pasta_downloads=downloads_folder_path, tentativ
     print(f"⚠️ Falha ao processar a imagem {nome_imagem} após {tentativas_max} tentativas.")
     return None, None
 
+
+
+
 # Função para extrair mensagens
-
-from openpyxl import load_workbook
-
 def obter_ultimo_horario(arquivo_excel):
     """ Retorna o último horário armazenado no Excel para evitar duplicação. """
     try:
@@ -271,14 +271,16 @@ def obter_ultimo_horario(arquivo_excel):
         print(f"⚠️ Erro ao obter o último horário do arquivo {arquivo_excel}: {e}")
         return None
 
-
-
 def extrair_mensagens():
     novas_mensagens = []
 
     bolhas = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
 
-        # Obter o último horário registrado para cada categoria
+
+
+
+
+    # Obter o último horário registrado para cada categoria
     ultimo_horario_funcionario = obter_ultimo_horario(xlsx_funcionario)
     ultimo_horario_motoboy = obter_ultimo_horario(xlsx_motoboy)
 
@@ -295,6 +297,7 @@ def extrair_mensagens():
                 if "[" in nome and "]" in nome:
                     horario = nome.split("]")[0].replace("[", "").strip()
                     nome = nome.split("] ")[-1].strip()
+
 
             texto_elemento = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
             texto = " ".join([t.text for t in texto_elemento]).strip()
@@ -354,6 +357,7 @@ def monitorar_entrada():
 thread_monitoramento = threading.Thread(target=monitorar_entrada, daemon=True)
 thread_monitoramento.start()
 
+
 # Monitoramento contínuo
 while programa_ativo:
     mensagens = extrair_mensagens()
@@ -380,6 +384,7 @@ while programa_ativo:
                 wb.save(arquivo_excel)
                 print(f"✅ Mensagem salva: {mensagem}")
 
+
                 # Ajustar a largura das colunas após salvar
                 ajustar_largura_colunas(arquivo_excel)
 
@@ -391,3 +396,4 @@ while programa_ativo:
     time.sleep(5)
 
 limpar_imagens_baixadas(downloads_folder_path, imagens_baixadas)
+print(f"✔️ O terminal já pode ser fechado!")

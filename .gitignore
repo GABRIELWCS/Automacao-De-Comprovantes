@@ -21,31 +21,26 @@ CAMINHOS GABRIEL(WIN)
 
 
 
-#Guardando backup do selenium que nao esta funcionando
+
+# Função para limpar a pasta de registros antigos
+def limpar_pasta(pasta):
+   # if os.path.exists(pasta):
+       # for arquivo in os.listdir(pasta):
+           # caminho_arquivo = os.path.join(pasta, arquivo)
+            #try:
+              #  if os.path.isfile(caminho_arquivo):
+               #     os.remove(caminho_arquivo)
+           # except Exception as e:
+               # print(f"⚠️ Erro ao remover {arquivo}: {e}")
+
+
+# Limpa a pasta antes de iniciar se necessário
+limpar_pasta("Comprovantes")
+print("🧹 Todos os arquivos da pasta 'Comprovantes' foram removidos!")
 
 
 
-def esperar_carregamento_entrada():
-    """Esperar até o QR Code ser escaneado ou o WhatsApp Web carregar completamente."""
-    while True:
-        try:
-            # Esperar até o QR Code ser escaneado (essa div aparece enquanto o QR Code é mostrado)
-            WebDriverWait(navegador, 60).until(
-                EC.presence_of_element_located((By.XPATH, '//div[@title="Pesquisar ou iniciar nova conversa"]'))
-            )
-            print("✅ WhatsApp Web carregado com sucesso! Pronto para começar.")
-            break  # O WhatsApp Web carregou completamente
-        except Exception as e:
-            print(f"🟠 Aguardando o QR Code ser escaneado... Erro: {e}")
-            time.sleep(5)  # Aguardar um pouco e tentar novamente
 
-navegador = configurar_selenium()
-esperar_carregamento_entrada()
-=======
-{chrome_profile_path}
-venv
-config.json
->>>>>>> 5874e7bcc4676a78ed49a1579bf88ed80d8370bb
 
 
 
@@ -61,3 +56,75 @@ config.json
     time.sleep(5)
 
 limpar_imagens_baixadas(dowloands_folder_path, imagens_baixadas)
+
+
+
+
+#Possível mudança para que comprovantes fora do mes atual nao seja salvo dentro do excel.
+
+from datetime import datetime
+
+def obter_mes_atual():
+    """Retorna o número do mês atual como string."""
+    return datetime.now().strftime('%m')
+
+
+
+    def extrair_mensagens():
+    novas_mensagens = []
+    mes_atual = obter_mes_atual()
+
+    bolhas = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
+
+    ultimo_horario_funcionario = obter_ultimo_horario(xlsx_funcionario)
+    ultimo_horario_motoboy = obter_ultimo_horario(xlsx_motoboy)
+
+    for bolha in bolhas:
+        try:
+            nome = "Você"
+            horario = "Desconhecido"
+
+            if "message-in" in bolha.get_attribute("class"):
+                nome_elemento = bolha.find_element(By.XPATH, './/div[contains(@class, "copyable-text")]')
+                nome = nome_elemento.get_attribute("data-pre-plain-text")
+                
+                if "[" in nome and "]" in nome:
+                    horario = nome.split("]")[0].replace("[", "").strip()
+                    nome = nome.split("] ")[-1].strip()
+                    
+                    # Extraindo o mês da data da mensagem
+                    mes_mensagem = horario.split('/')[1] if '/' in horario else "00"
+                    if mes_mensagem != mes_atual:
+                        continue  # Ignorar mensagens fora do mês atual
+
+            texto_elemento = bolha.find_elements(By.XPATH, './/span[contains(@class, "selectable-text")]')
+            texto = " ".join([t.text for t in texto_elemento]).strip()
+
+            if texto.startswith("Transferência realizada"):
+                categoria = classificar_categoria(texto)
+                valor = extrair_valor(texto)
+                identificador = f"{nome}-{horario}-{valor}-{texto}"
+
+                if categoria == "Funcionário" and ultimo_horario_funcionario and horario <= ultimo_horario_funcionario:
+                    continue
+                if categoria == "Motoboy" and ultimo_horario_motoboy and horario <= ultimo_horario_motoboy:
+                    continue
+
+                try:
+                    imagem_elemento = bolha.find_element(By.XPATH, './/img[contains(@src, "blob:") or contains(@class, "media")]')
+                except NoSuchElementException:
+                    imagem_elemento = None
+
+                if imagem_elemento:
+                    nome_arquivo = gerar_nome_arquivo_hash(identificador)
+
+                if nome_arquivo not in mensagens_processadas:
+                    baixar_imagem(imagem_elemento, nome_arquivo)
+                    valor, destinatario = analisar_imagem(nome_arquivo)
+                    mensagens_processadas.add(nome_arquivo)
+                    novas_mensagens.append((nome, horario, categoria, valor, destinatario, texto))
+
+        except Exception as e:
+            print(f"⚠️ Erro ao extrair mensagem: {e}")
+
+    return novas_mensagens
