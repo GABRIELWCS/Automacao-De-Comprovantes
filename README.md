@@ -33,7 +33,6 @@
 <p align="center">
   <img src="https://github.com/GABRIELWCS/Automacao-De-Comprovantes/blob/main/imagens/demo.gif" alt="Demonstração da Automação" width="80%">
 </p>
-
 ---
 
 ## 🚀 Tecnologias Utilizadas
@@ -55,5 +54,19 @@
  - ✅ Interface gráfica simples
 
  - ✅ Integração com Google Drive
+
+---
+
+## 🧠 Autor
+Gabriel Willian Da Costa Souza
+- 💻 Apaixonado por tecnologia, automação e desenvolvimento de soluções práticas.
+- 🎓 Cursando Análise e Desenvolvimento de Sistemas (2025)
+- 📍 Jacareí/SP
+  
+---
+
+## 📄 Licença
+Este projeto está sob a licença MIT.
+Sinta-se livre para usar, estudar e adaptar!
 
 
