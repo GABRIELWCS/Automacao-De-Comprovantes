@@ -46,18 +46,19 @@
 
 ---
 
-## ⚙️ Como usar
+📌 Roadmap
+ Separar por categorias (Motoboy, Funcionário)
 
-```bash
-# Clone o repositório
-git clone https://github.com/seuusuario/seurepositorio.git
-cd seurepositorio
+ Organizar por mês/ano
 
-# Instale as dependências
-pip install -r requirements.txt
+ Interface gráfica simples
 
-# Execute o script principal
-python main.py
+ Integração com Google Drive
 
-⚠️ É necessário ter o Chrome instalado e configurado com perfil local.
-⚠️ Tesseract OCR também precisa estar instalado e acessível no PATH.
+🧠 Autor
+Gabriel Willian Da Costa Souza
+💻 Apaixonado por tecnologia, automação e desenvolvimento de soluções práticas.
+🎓 Cursando Análise e Desenvolvimento de Sistemas (2025)
+📍 Jacareí/SP
+
+LinkedIn | GitHub
