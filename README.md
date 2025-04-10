@@ -55,10 +55,4 @@
 
  Integração com Google Drive
 
-🧠 Autor
-|Gabriel Willian Da Costa Souza|
-  💻 Apaixonado por tecnologia, automação e desenvolvimento de soluções práticas.
-  🎓 Cursando Análise e Desenvolvimento de Sistemas (2025)
-  📍 Jacareí/SP
 
-LinkedIn | GitHub
