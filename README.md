@@ -48,12 +48,12 @@
 
 ## 📌 Roadmap
 
- -Separar por categorias (Motoboy, Funcionário)
+ - ✅ Separar por categorias (Motoboy, Funcionário)
 
- -Organizar por mês/ano
+ - ✅ Organizar por mês/ano
 
- -Interface gráfica simples
+ - ✅ Interface gráfica simples
 
- -Integração com Google Drive
+ - ✅ Integração com Google Drive
 
 
