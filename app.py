@@ -277,9 +277,6 @@ def extrair_mensagens():
     bolhas = navegador.find_elements(By.XPATH, '//div[contains(@class, "message-in") or contains(@class, "message-out")]')
 
 
-
-
-
     # Obter o último horário registrado para cada categoria
     ultimo_horario_funcionario = obter_ultimo_horario(xlsx_funcionario)
     ultimo_horario_motoboy = obter_ultimo_horario(xlsx_motoboy)
