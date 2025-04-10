@@ -51,6 +51,8 @@
 
  - ✅ Separar por categorias (Motoboy, Funcionário)
 
+ - ✅ Separa por dados extraídos como (Quem enviou, Data e Hora, valor, Destinatário, Categoria )
+
  - ✅ Organizar por mês/ano
 
  - ✅ Interface gráfica simples
