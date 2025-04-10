@@ -62,7 +62,7 @@ Gabriel Willian Da Costa Souza
 - 💻 Apaixonado por tecnologia, automação e desenvolvimento de soluções práticas.
 - 🎓 Cursando Análise e Desenvolvimento de Sistemas (2025)
 - 📍 Jacareí/SP
-  
+- [Linkedin](https://www.linkedin.com/in/gabriel-souza-553224247/)|[GitHub](https://github.com/GABRIELWCS/)
 ---
 
 ## 📄 Licença
