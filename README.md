@@ -30,13 +30,8 @@
 
 ## 📸 Demonstração
 
-### 📸 Demonstração
+> 📌 Demonstração em vídeo será adicionada em breve!
 
-<p align="center">
-  <img src="imagens/demo.gif" alt="Demonstração da automação rodando" width="80%">
-</p>
-
-<p align="center">
   <i>O script identifica o comprovante no WhatsApp Web, extrai os dados com OCR e salva automaticamente em uma planilha Excel organizada por categoria e mês.</i>
 </p>
 
