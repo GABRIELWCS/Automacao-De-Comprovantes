@@ -31,7 +31,7 @@
 ## 📸 Demonstração
 
 <p align="center">
-  <img src="https://github.com/seuusuario/seurepositorio/blob/main/imagens/demo.gif" alt="Demonstração da Automação" width="80%">
+  <img src="https://github.com/GABRIELWCS/Automacao-De-Comprovantes/blob/main/imagens/demo.gif" alt="Demonstração da Automação" width="80%">
 </p>
 
 ---
