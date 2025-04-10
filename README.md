@@ -30,9 +30,16 @@
 
 ## 📸 Demonstração
 
+### 📸 Demonstração
+
 <p align="center">
-  <img src="https://github.com/GABRIELWCS/Automacao-De-Comprovantes/blob/main/imagens/demo.gif" alt="Demonstração da Automação" width="80%">
+  <img src="imagens/demo.gif" alt="Demonstração da automação rodando" width="80%">
 </p>
+
+<p align="center">
+  <i>O script identifica o comprovante no WhatsApp Web, extrai os dados com OCR e salva automaticamente em uma planilha Excel organizada por categoria e mês.</i>
+</p>
+
 ---
 
 ## 🚀 Tecnologias Utilizadas
